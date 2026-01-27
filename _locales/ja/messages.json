@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Better GitHub Utils",
+    "description": "拡張機能名"
+  },
+  "extDesc": {
+    "message": "GitHubに様々な便利な機能を追加します(一部の機能にはAPI Keyが必要です)",
+    "description": "拡張の説明"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "extName": {
+    "message": "Better GitHub Utils",
+    "description": "Extension name"
+  },
+  "extDesc": {
+    "message": "Adds various useful features to GitHub (some features require an API key)",
+    "description": "Extension description"
+  },
+  "followed": {
+    "message": "Followed you",
+    "description": "Indicates the user follows you"
+  },
+  "not_followed": {
+    "message": "Not followed you",
+    "description": "Indicates the user does not follow you"
+  },
+  "mutual_follow": {
+    "message": "Mutual follow",
+    "description": "Indicates you follow each other"
+  },
+  "optionsTitle": {
+    "message": "Options",
+    "description": "Title for options page"
+  },
+  "tokenLabel": {
+    "message": "Personal Access Token",
+    "description": "Label for the personal access token input"
+  },
+  "save": {
+    "message": "Save",
+    "description": "Save button text"
+  },
+  "clear": {
+    "message": "Clear",
+    "description": "Clear button text"
+  }
+}

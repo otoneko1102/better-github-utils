@@ -1,0 +1,155 @@
+
+.github-utils-follow-badge,
+.github-utils-list-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 14px;
+  font-size: 12px;
+  color: #fff;
+  font-weight: 600;
+}
+
+
+.github-utils-checker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  margin-top: 6px;
+}
+.github-utils-follow-badge[data-status="followed"],
+.github-utils-list-badge[data-status="followed"] {
+  background: #28a745;
+}
+.github-utils-follow-badge[data-status="not_followed"],
+.github-utils-list-badge[data-status="not_followed"] {
+  background: #6a737d;
+}
+.github-utils-hover-badge {
+  margin-top: 6px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.github-utils-profile-badge {
+  display: block;
+  margin-top: 8px;
+}
+
+
+#rate {
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f6f8fa;
+  border: 1px solid #e1e8ee;
+}
+#rate-status {
+  font-size: 13px;
+}
+#rate .ok {
+  color: #0a7a2b;
+  font-weight: 600;
+}
+#rate .warn {
+  color: #b04500;
+  font-weight: 600;
+}
+#rate .muted {
+  color: #666;
+}
+
+
+.gh-autocomplete-panel {
+  margin: 12px 0 8px 0;
+  border-radius: 8px;
+  border: 1px solid #e7e9ec;
+  background: #fff;
+  padding: 10px;
+  z-index: 9999;
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.08);
+}
+.gh-autocomplete-header {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.gh-autocomplete-body {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.gh-autoc-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #d73a49; 
+  color: #ffffff; 
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.04);
+  transition:
+    background 0.12s ease,
+    transform 0.06s ease,
+    box-shadow 0.12s ease;
+}
+
+.gh-autoc-btn[data-action] {
+  background: #d73a49;
+  color: #fff;
+}
+
+.gh-autoc-btn:hover {
+  background: #b22a3a; 
+  transform: translateY(-1px);
+}
+.gh-autoc-btn:focus {
+  outline: none;
+  box-shadow: 0 6px 20px rgba(215, 58, 73, 0.18);
+  border-color: rgba(215, 58, 73, 0.35);
+  margin-top: 6px;
+  font-size: 12px;
+  color: #666;
+}
+
+
+.gh-autoc-inline {
+  margin-top: 10px;
+  display: block;
+}
+.gh-autoc-inline-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.gh-autoc-inline .gh-autoc-btn {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #d73a49;
+  color: #fff;
+}
+.gh-autoc-opt {
+  font-size: 12px;
+  color: #ddd;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gh-autoc-opt input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+.gh-autoc-inline-status {
+  font-size: 12px;
+  color: #ffdede;
+  margin-top: 6px;
+}
+.gh-autocomplete-inline-panel {
+  display: inline-block;
+}
