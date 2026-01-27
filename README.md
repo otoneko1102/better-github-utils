@@ -2,7 +2,7 @@
 
 **English** | [日本語](./README-ja.md)  
 
-Better GitHub Utils shows whether a GitHub user follows you (profile pages, followers lists, and hovercards). It also provides an optional Personal Access Token (PAT) popup for authenticated API checks, rate-limit diagnostics, and repository automation helpers (archive/delete assistance).
+Better GitHub Utils shows whether a GitHub user follows you (profile pages / following lists). It also provides an optional Personal Access Token (PAT) popup for authenticated API checks, rate-limit diagnostics, and repository automation helpers (archive/delete assistance).
 
 ## Features
 - Show follow status on profile and followers/following lists
