@@ -2,7 +2,7 @@
 
 [English](./README.md) | **日本語**  
 
-Better GitHub Utils は、プロフィールページ、followers/following リストで「そのユーザーがあなたをフォローしているか」を表示する拡張機能です。オプションで Personal Access Token（PAT）をポップアップから設定することで、認証済み API チェックやレート制限の診断、リポジトリ自動化（アーカイブ／削除支援）などの機能が利用できます。
+Better GitHub Utils は、プロフィールページ、following リストで「そのユーザーがあなたをフォローしているか」を表示する拡張機能です。オプションで Personal Access Token（PAT）をポップアップから設定することで、認証済み API チェックやレート制限の診断、リポジトリ自動化（アーカイブ／削除支援）などの機能が利用できます。
 
 ## 機能
 - プロフィール、followers/following リスト、ホバーカードでフォロー状況を表示
