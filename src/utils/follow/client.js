@@ -1,15 +1,92 @@
 const pending = new Map();
 const cache = new Map();
 const pendingLists = new Map();
+const listsCache = new Map();
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PERSIST_KEY_CACHE = "gh_follow_cache_v1";
+const PERSIST_KEY_LISTS = "gh_lists_cache_v1";
+let _persistTimer = null;
+
+function schedulePersistSave() {
+  try {
+    if (_persistTimer) return;
+    _persistTimer = setTimeout(() => {
+      _persistTimer = null;
+      try {
+        const c = {};
+        cache.forEach((v, k) => {
+          try {
+            if (v && v.ts && typeof v.value !== "undefined") c[k] = v;
+          } catch (e) {}
+        });
+        const l = {};
+        listsCache.forEach((v, k) => {
+          try {
+            if (v && v.ts && typeof v.value !== "undefined") l[k] = v;
+          } catch (e) {}
+        });
+        try {
+          chrome.storage.local.set({ [PERSIST_KEY_CACHE]: c, [PERSIST_KEY_LISTS]: l });
+        } catch (e) {}
+      } catch (e) {}
+    }, 600);
+  } catch (e) {}
+}
+
+function loadPersistentCache() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get([PERSIST_KEY_CACHE, PERSIST_KEY_LISTS], (items) => {
+        try {
+          const now = Date.now();
+          const c = items && items[PERSIST_KEY_CACHE] ? items[PERSIST_KEY_CACHE] : {};
+          const l = items && items[PERSIST_KEY_LISTS] ? items[PERSIST_KEY_LISTS] : {};
+          Object.keys(c || {}).forEach((k) => {
+            try {
+              const e = c[k];
+              if (e && e.ts && now - e.ts < CACHE_TTL_MS) cache.set(k, e);
+            } catch (e) {}
+          });
+          Object.keys(l || {}).forEach((k) => {
+            try {
+              const e = l[k];
+              if (e && e.ts && now - e.ts < CACHE_TTL_MS) listsCache.set(k, e);
+            } catch (e) {}
+          });
+        } catch (e) {}
+        resolve();
+      });
+    } catch (e) {
+      resolve();
+    }
+  });
+}
+
+// load persisted entries on module init
+try {
+  loadPersistentCache().catch(() => {});
+} catch (e) {}
 
 export function clearCache() {
   pending.clear();
   cache.clear();
   pendingLists.clear();
+  listsCache.clear();
 }
 
 function ensureViewerLists(viewer) {
   if (!viewer) return Promise.resolve({ followers: [] });
+  // prefer cached lists if fresh
+  try {
+    if (listsCache.has(viewer)) {
+      const entry = listsCache.get(viewer);
+      if (entry && Date.now() - entry.ts < CACHE_TTL_MS) {
+        return Promise.resolve(entry.value);
+      }
+      listsCache.delete(viewer);
+    }
+  } catch (e) {}
   if (pendingLists.has(viewer)) return pendingLists.get(viewer);
 
   const attemptSend = async () => {
@@ -56,12 +133,27 @@ function ensureViewerLists(viewer) {
 
   const p = attemptSend().finally(() => pendingLists.delete(viewer));
   pendingLists.set(viewer, p);
+  // When resolved, cache the lists for TTL
+  p.then((res) => {
+    try {
+      if (res) {
+        listsCache.set(viewer, { value: res, ts: Date.now() });
+        schedulePersistSave();
+      }
+    } catch (e) {}
+  }).catch(() => {});
   return p;
 }
 
 export async function getFollowStatusOnce(viewer, target) {
   const key = `${viewer}::${target}`;
-  if (cache.has(key)) return cache.get(key);
+  if (cache.has(key)) {
+    try {
+      const entry = cache.get(key);
+      if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry.value;
+      cache.delete(key);
+    } catch (e) {}
+  }
   if (pending.has(key)) return pending.get(key);
   const p = (async () => {
     const lists = await ensureViewerLists(viewer);
@@ -114,7 +206,8 @@ export async function getFollowStatusOnce(viewer, target) {
             await new Promise((r) => setTimeout(r, 200));
         }
         if (fallback) {
-          cache.set(key, fallback);
+          cache.set(key, { value: fallback, ts: Date.now() });
+          schedulePersistSave();
           return fallback;
         }
       } catch (e) {
@@ -143,7 +236,8 @@ export async function getFollowStatusOnce(viewer, target) {
           status1: res1.status,
           status2: res2.status,
         });
-        cache.set(key, direct);
+        cache.set(key, { value: direct, ts: Date.now() });
+        schedulePersistSave();
         return direct;
       } catch (e) {
         console.warn("[gh-utils] direct fetch fallback failed", e, {
@@ -152,7 +246,8 @@ export async function getFollowStatusOnce(viewer, target) {
         });
       }
 
-      cache.set(key, null);
+      cache.set(key, { value: null, ts: Date.now() });
+      schedulePersistSave();
       return null;
     }
 
@@ -160,7 +255,8 @@ export async function getFollowStatusOnce(viewer, target) {
       viewerFollowsTarget: null,
       targetFollowsViewer: (lists.followers || []).includes(vt),
     };
-    cache.set(key, result);
+    cache.set(key, { value: result, ts: Date.now() });
+    schedulePersistSave();
     return result;
   })();
   pending.set(key, p);
@@ -170,5 +266,16 @@ export async function getFollowStatusOnce(viewer, target) {
 
 export function getCachedFollowStatus(viewer, target) {
   const key = `${viewer}::${target}`;
-  return cache.has(key) ? cache.get(key) : undefined;
+  try {
+    if (!cache.has(key)) return undefined;
+    const entry = cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts >= CACHE_TTL_MS) {
+      cache.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  } catch (e) {
+    return undefined;
+  }
 }
