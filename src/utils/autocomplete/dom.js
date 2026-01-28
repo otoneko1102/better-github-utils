@@ -117,9 +117,7 @@ export function insertInlinePanels() {
       try {
         li.appendChild(panel);
         inserted.push(panel);
-      } catch (e2) {
-        
-      }
+      } catch (e2) {}
     }
   }
   return inserted;

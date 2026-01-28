@@ -1,5 +1,21 @@
-(function () {
+(async function () {
   "use strict";
+  // If no token is set in storage, disable all content-script behavior.
+  try {
+    const token = await new Promise((resolve) =>
+      chrome.storage.sync.get(["github_utils_token"], (items) =>
+        resolve(items.github_utils_token || null),
+      ),
+    );
+    if (!token) {
+      try {
+        console.debug(
+          "[gh-utils] content: token missing — content script disabled",
+        );
+      } catch (e) {}
+      return;
+    }
+  } catch (e) {}
 
   async function ensure(modPath) {
     try {
