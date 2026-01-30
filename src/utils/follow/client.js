@@ -27,7 +27,10 @@ function schedulePersistSave() {
           } catch (e) {}
         });
         try {
-          chrome.storage.local.set({ [PERSIST_KEY_CACHE]: c, [PERSIST_KEY_LISTS]: l });
+          chrome.storage.local.set({
+            [PERSIST_KEY_CACHE]: c,
+            [PERSIST_KEY_LISTS]: l,
+          });
         } catch (e) {}
       } catch (e) {}
     }, 600);
@@ -37,26 +40,32 @@ function schedulePersistSave() {
 function loadPersistentCache() {
   return new Promise((resolve) => {
     try {
-      chrome.storage.local.get([PERSIST_KEY_CACHE, PERSIST_KEY_LISTS], (items) => {
-        try {
-          const now = Date.now();
-          const c = items && items[PERSIST_KEY_CACHE] ? items[PERSIST_KEY_CACHE] : {};
-          const l = items && items[PERSIST_KEY_LISTS] ? items[PERSIST_KEY_LISTS] : {};
-          Object.keys(c || {}).forEach((k) => {
-            try {
-              const e = c[k];
-              if (e && e.ts && now - e.ts < CACHE_TTL_MS) cache.set(k, e);
-            } catch (e) {}
-          });
-          Object.keys(l || {}).forEach((k) => {
-            try {
-              const e = l[k];
-              if (e && e.ts && now - e.ts < CACHE_TTL_MS) listsCache.set(k, e);
-            } catch (e) {}
-          });
-        } catch (e) {}
-        resolve();
-      });
+      chrome.storage.local.get(
+        [PERSIST_KEY_CACHE, PERSIST_KEY_LISTS],
+        (items) => {
+          try {
+            const now = Date.now();
+            const c =
+              items && items[PERSIST_KEY_CACHE] ? items[PERSIST_KEY_CACHE] : {};
+            const l =
+              items && items[PERSIST_KEY_LISTS] ? items[PERSIST_KEY_LISTS] : {};
+            Object.keys(c || {}).forEach((k) => {
+              try {
+                const e = c[k];
+                if (e && e.ts && now - e.ts < CACHE_TTL_MS) cache.set(k, e);
+              } catch (e) {}
+            });
+            Object.keys(l || {}).forEach((k) => {
+              try {
+                const e = l[k];
+                if (e && e.ts && now - e.ts < CACHE_TTL_MS)
+                  listsCache.set(k, e);
+              } catch (e) {}
+            });
+          } catch (e) {}
+          resolve();
+        },
+      );
     } catch (e) {
       resolve();
     }

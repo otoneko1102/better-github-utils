@@ -44,18 +44,105 @@ export function insertPlaceholderInChecker(
   btn,
   className = "github-utils-list-badge",
 ) {
+  // If a badge already exists adjacent to the button, reuse it to avoid duplicates
+  try {
+    const after = btn && btn.nextElementSibling;
+    if (
+      after &&
+      after.classList &&
+      (after.classList.contains("github-utils-list-badge") ||
+        after.classList.contains("github-utils-follow-badge"))
+    ) {
+      return after;
+    }
+  } catch (e) {}
+
   const root = getOrCreateCheckerContainer(btn);
+  // If root already contains a badge, reuse the first one
+  try {
+    if (root) {
+      const existing = root.querySelector(
+        ".github-utils-list-badge, .github-utils-follow-badge",
+      );
+      if (existing) return existing;
+    }
+  } catch (e) {}
+
   const p = document.createElement("span");
   p.className = className;
   p.textContent = "...";
-  if (root) root.appendChild(p);
+
+  // Prefer to insert the placeholder into the checker container (separate from the button's form)
+  // This ensures the badge is not removed when the follow/unfollow form is replaced.
+  try {
+    if (root) {
+      try {
+        // mark the checker to show badges below when used for button-associated badges
+        if (btn && btn.nodeType === 1)
+          root.classList.add("github-utils-checker-below");
+      } catch (e) {}
+      try {
+        root.appendChild(p);
+        return p;
+      } catch (e) {}
+    }
+  } catch (e) {}
+
+  // Fallback: insert after button (legacy behavior)
+  try {
+    if (btn && btn.insertAdjacentElement) {
+      try {
+        p.style.display = "block";
+        p.style.marginTop = "6px";
+        p.style.fontSize = "12px";
+        btn.insertAdjacentElement("afterend", p);
+        return p;
+      } catch (e) {}
+    }
+  } catch (e) {}
+
   return p;
 }
 
 export function appendBadgeToChecker(btn, badge) {
   const root = getOrCreateCheckerContainer(btn);
-  if (root) root.appendChild(badge);
+  if (root) {
+    const existing = root.querySelector(
+      ".github-utils-list-badge, .github-utils-follow-badge",
+    );
+    if (existing) {
+      try {
+        existing.replaceWith(badge);
+      } catch (e) {}
+      return badge;
+    }
+    root.appendChild(badge);
+  }
   return badge;
+}
+
+// Insert a badge element directly after an anchor (typically a username link).
+// If `block` is true, the badge will be shown on its own line below the anchor.
+export function insertBadgeBelowAnchor(anchor, badge, { block = true } = {}) {
+  try {
+    if (!anchor || !badge) return badge;
+    if (block) {
+      try {
+        badge.style.display = "block";
+        badge.style.marginTop = "2px";
+        badge.style.fontSize = "12px";
+      } catch (e) {}
+    }
+    if (anchor.insertAdjacentElement) {
+      anchor.insertAdjacentElement("afterend", badge);
+      return badge;
+    }
+    const parent = anchor.parentElement;
+    if (parent) parent.appendChild(badge);
+    return badge;
+  } catch (e) {
+    return badge;
+  }
 }
 
 export function replaceWithBadge(el, statusKey, cls) {

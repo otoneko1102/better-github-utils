@@ -33,24 +33,70 @@
   align-items: center;
   gap: 6px;
 }
-.github-utils-profile-badge {
-  display: block;
-  margin-top: 8px;
+
+/* name-side badges should sit inline to the right of usernames */
+.github-utils-list-badge.name-side,
+.github-utils-follow-badge.name-side {
+  margin-top: 0 !important;
+  margin-left: 6px !important;
+  vertical-align: middle !important;
+  display: inline-flex !important;
 }
 
-#rate {
-  margin-top: 12px;
-  padding: 8px;
-  border-radius: 8px;
-  background: #f6f8fa;
-  border: 1px solid #e1e8ee;
+/* Prevent duplicate badges from appearing in the same article/container.
+   - Hide any subsequent badge inside the checker container
+   - Hide adjacent duplicate badges when they accidentally get inserted twice
+   - If a checker badge exists in the same article, prefer it and hide name-side badges (uses :has()) */
+.github-utils-checker .github-utils-list-badge:not(:first-of-type),
+.github-utils-checker .github-utils-follow-badge:not(:first-of-type),
+.github-utils-list-badge + .github-utils-list-badge,
+.github-utils-follow-badge + .github-utils-follow-badge {
+  display: none !important;
 }
-#rate-status {
-  font-size: 13px;
+
+article:has(.github-utils-checker .github-utils-list-badge)
+  .github-utils-list-badge.name-side,
+article:has(.github-utils-checker .github-utils-follow-badge)
+  .github-utils-follow-badge.name-side {
+  display: none !important;
 }
-#rate .ok {
-  color: #0a7a2b;
-  font-weight: 600;
+
+/* When a checker badge exists anywhere in the article, prefer it and hide other badges */
+article:has(.github-utils-checker .github-utils-list-badge)
+  .github-utils-list-badge,
+article:has(.github-utils-checker .github-utils-follow-badge)
+  .github-utils-follow-badge {
+  display: none !important;
+}
+/* Always ensure checker badges remain visible (more specific selector to override the previous rule) */
+article:has(.github-utils-checker .github-utils-list-badge)
+  .github-utils-checker
+  .github-utils-list-badge,
+article:has(.github-utils-checker .github-utils-follow-badge)
+  .github-utils-checker
+  .github-utils-follow-badge {
+  display: inline-flex !important;
+}
+
+/* Left-of-action spacing and vertical alignment for badges placed to the left of the action button */
+.github-utils-checker > .github-utils-list-badge,
+.github-utils-checker > .github-utils-follow-badge {
+  margin-right: 6px;
+  margin-top: 0;
+}
+
+/* When checker is used to show badges below buttons, stack the badges vertically and center them. */
+.github-utils-checker.github-utils-checker-below {
+  display: inline-block;
+  vertical-align: top;
+  text-align: center;
+}
+.github-utils-checker.github-utils-checker-below .github-utils-list-badge,
+.github-utils-checker.github-utils-checker-below .github-utils-follow-badge {
+  display: block;
+  margin-top: 6px;
+  margin-left: 0;
+  font-size: 12px;
 }
 #rate .warn {
   color: #b04500;

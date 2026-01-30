@@ -174,11 +174,12 @@
       try {
         if (b.hidden || b.hasAttribute("hidden") || b.offsetParent === null)
           return;
-        const item =
+        // scope the duplicate check to the button's own row/container so multiple users in the same broader item can each get badges
+        const row =
           b.closest(".d-table") || b.closest("li") || b.closest("div");
         if (
-          item &&
-          item.querySelector(
+          row &&
+          row.querySelector(
             ".github-utils-list-badge, .github-utils-follow-badge",
           )
         )
@@ -186,6 +187,766 @@
         handleButton(b);
       } catch (e) {}
     });
+  }
+
+  function scanFeed(root = document) {
+    try {
+      const viewer = getCurrentUser();
+      if (!viewer) return;
+
+      // process per feed item/article to avoid cross-binding badges
+      const items = Array.from(
+        root.querySelectorAll(
+          "article, .js-feed-item-component, .news, .TimelineItem, .js-timeline-item, .news-item",
+        ),
+      );
+
+      items.forEach((item) => {
+        try {
+          // track usernames we've already added badges for in this article
+          const namesSeen = new Set();
+
+          // detect event type early (used to special-case STARRED_REPOSITORY)
+          const hv = item.getAttribute && item.getAttribute("data-hydro-view");
+          const isFollowEvent = hv && hv.indexOf('"card_type":"FOLLOW"') !== -1;
+          const isStarredEvent =
+            hv && hv.indexOf('"card_type":"STARRED_REPOSITORY"') !== -1;
+          const isTrendingEvent =
+            hv && hv.indexOf('"card_type":"TRENDING_REPOSITORY"') !== -1;
+          const isRecommendationEvent =
+            hv && hv.indexOf('"card_type":"REPOSITORY_RECOMMENDATION"') !== -1;
+          const isAddedToListEvent =
+            hv && hv.indexOf('"card_type":"ADDED_TO_LIST"') !== -1;
+
+          // collect all anchors and identify repo links (owner/repo)
+          const allAnchors = Array.from(
+            (item.querySelectorAll && item.querySelectorAll('a[href^="/"]')) ||
+              [],
+          );
+          if (!allAnchors.length) return;
+          const repoAnchors = allAnchors.filter((a) => {
+            try {
+              const n = (a.getAttribute("href") || "")
+                .replace(/^\//, "")
+                .replace(/\/$/, "");
+              return n.indexOf("/") !== -1;
+            } catch (e) {
+              return false;
+            }
+          });
+
+          // consolidate existing badges in this article: keep one badge per username and remove duplicates
+          try {
+            // helper: attempt to find the closest username anchor for a badge element
+            const findClosestAnchorName = (el) => {
+              try {
+                const isValidAnchor = (a) => {
+                  const href = (a.getAttribute("href") || "")
+                    .replace(/^\//, "")
+                    .replace(/\/$/, "");
+                  return href && href.indexOf("/") === -1;
+                };
+
+                // scan previous siblings for anchors
+                let prev = el.previousElementSibling;
+                for (
+                  let i = 0;
+                  prev && i < 8;
+                  i++, prev = prev.previousElementSibling
+                ) {
+                  try {
+                    if (
+                      prev.matches &&
+                      prev.matches('a[href^="/"]') &&
+                      isValidAnchor(prev)
+                    )
+                      return (prev.getAttribute("href") || "")
+                        .replace(/^\//, "")
+                        .replace(/\/$/, "");
+                    const inner =
+                      prev.querySelector && prev.querySelector('a[href^="/"]');
+                    if (inner && isValidAnchor(inner))
+                      return (inner.getAttribute("href") || "")
+                        .replace(/^\//, "")
+                        .replace(/\/$/, "");
+                  } catch (e) {}
+                }
+
+                // search up the ancestor chain for anchors in local containers
+                let anc = el;
+                for (let i = 0; anc && i < 8; i++) {
+                  anc = anc.parentElement;
+                  if (!anc) break;
+                  try {
+                    const a =
+                      anc.querySelector && anc.querySelector('a[href^="/"]');
+                    if (a && isValidAnchor(a))
+                      return (a.getAttribute("href") || "")
+                        .replace(/^\//, "")
+                        .replace(/\/$/, "");
+                  } catch (e) {}
+                }
+
+                // fallback: choose the nearest anchor in the article by bounding rect distance
+                const anchors = Array.from(
+                  item.querySelectorAll('a[href^="/"]'),
+                ).filter((a) => {
+                  try {
+                    return isValidAnchor(a);
+                  } catch (e) {
+                    return false;
+                  }
+                });
+                if (!anchors.length) return null;
+                const elRect = el.getBoundingClientRect
+                  ? el.getBoundingClientRect()
+                  : { top: 0, left: 0 };
+                let best = null;
+                let bestDist = Number.MAX_VALUE;
+                anchors.forEach((a) => {
+                  try {
+                    const r = a.getBoundingClientRect();
+                    const dist =
+                      Math.abs(r.top - elRect.top) +
+                      Math.abs(r.left - elRect.left);
+                    if (dist < bestDist) {
+                      bestDist = dist;
+                      best = a;
+                    }
+                  } catch (e) {}
+                });
+                if (best)
+                  return (best.getAttribute("href") || "")
+                    .replace(/^\//, "")
+                    .replace(/\/$/, "");
+              } catch (e) {}
+              return null;
+            };
+
+            // helper: if badge sits inside a form or user-following container, derive username from the form or button
+            const getNameFromFormOrButton = (el) => {
+              try {
+                const f =
+                  el.closest("form") ||
+                  el.closest(".user-following-container") ||
+                  el.closest("div");
+                if (!f) return null;
+                // try action target
+                try {
+                  const action =
+                    (f.getAttribute &&
+                      (f.getAttribute("action") || f.action || "")) ||
+                    "";
+                  const q = action.split("?")[1] || "";
+                  const p = new URLSearchParams(q);
+                  if (p.get("target")) return p.get("target");
+                } catch (e) {}
+                // look for follow button in the same form/container
+                try {
+                  const btns = Array.from(
+                    (f.querySelectorAll &&
+                      f.querySelectorAll('input[type="submit"],button')) ||
+                      [],
+                  );
+                  for (const b of btns) {
+                    try {
+                      const s = (
+                        b.getAttribute("aria-label") ||
+                        b.title ||
+                        b.value ||
+                        b.textContent ||
+                        b.innerText ||
+                        ""
+                      ).trim();
+                      let m = s.match(/Follow\s+(.*)|Unfollow\s+(.*)/i);
+                      if (m) return (m[1] || m[2]).trim();
+                    } catch (e) {}
+                  }
+                } catch (e) {}
+                // fallback: anchor inside the form/container
+                try {
+                  const a = f.querySelector && f.querySelector('a[href^="/"]');
+                  if (a)
+                    return (a.getAttribute("href") || "")
+                      .replace(/^\//, "")
+                      .replace(/\/$/, "");
+                } catch (e) {}
+              } catch (e) {}
+              return null;
+            };
+
+            const existingBadges = Array.from(
+              item.querySelectorAll(
+                ".github-utils-list-badge, .github-utils-follow-badge",
+              ),
+            );
+            const kept = new Set();
+
+            // Move any badges that live inside forms or follow button containers into the persistent checker container
+            try {
+              ensure("src/utils/follow/dom.js")
+                .then((dom) => {
+                  try {
+                    existingBadges.forEach((b) => {
+                      try {
+                        const form =
+                          b.closest("form") ||
+                          b.closest(".user-following-container");
+                        if (!form) return;
+                        // find the follow/unfollow button in this form
+                        const followBtn = Array.from(
+                          (form.querySelectorAll &&
+                            form.querySelectorAll(
+                              'input[type="submit"],button',
+                            )) ||
+                            [],
+                        ).find((bn) => {
+                          try {
+                            const s = (
+                              bn.getAttribute("aria-label") ||
+                              bn.title ||
+                              bn.textContent ||
+                              bn.innerText ||
+                              ""
+                            ).toLowerCase();
+                            return /(^|\s)(follow|unfollow)($|\s)/i.test(s);
+                          } catch (e) {
+                            return false;
+                          }
+                        });
+                        if (followBtn) {
+                          try {
+                            dom.appendBadgeToChecker(followBtn, b);
+                          } catch (e) {}
+                        }
+                      } catch (e) {}
+                    });
+                  } catch (e) {}
+                })
+                .catch(() => {});
+            } catch (e) {}
+
+            existingBadges.forEach((b) => {
+              try {
+                let name = b.dataset.ghName || null;
+                const prev = b.previousElementSibling;
+                if (!name) {
+                  if (prev && prev.matches && prev.matches('a[href^="/"]')) {
+                    name = (prev.getAttribute("href") || "")
+                      .replace(/^\//, "")
+                      .replace(/\/$/, "");
+                  } else if (b.parentElement) {
+                    const anchors =
+                      Array.from(
+                        b.parentElement.querySelectorAll('a[href^="/"]'),
+                      ) || [];
+                    if (anchors.length)
+                      name = (anchors[0].getAttribute("href") || "")
+                        .replace(/^\//, "")
+                        .replace(/\/$/, "");
+                  }
+                }
+
+                // try deriving name from nearby form/button if still missing
+                if (!name) name = getNameFromFormOrButton(b);
+
+                // attempt to find a nearby anchor if we still don't have a name
+                if (!name) name = findClosestAnchorName(b);
+                if (!name) return;
+
+                // If this is a repository-type card that shows a repo (starred/trending/recommended/added-to-list) and this badge appears
+                // to be attached to the repository's owner area, remove it (we don't want badges for the owner in these cards).
+                if (
+                  (isStarredEvent ||
+                    isTrendingEvent ||
+                    isRecommendationEvent ||
+                    isAddedToListEvent) &&
+                  repoAnchors.length
+                ) {
+                  const ownerAnchor =
+                    prev && prev.matches && prev.matches('a[href^="/"]')
+                      ? prev
+                      : (b.parentElement &&
+                          b.parentElement.querySelector('a[href^="/"]')) ||
+                        null;
+                  if (ownerAnchor) {
+                    const isOwnerNearRepo = repoAnchors.some((ra) => {
+                      try {
+                        return (
+                          ra.closest("section") ===
+                            ownerAnchor.closest("section") ||
+                          ra.closest("div") === ownerAnchor.closest("div") ||
+                          ra.parentElement === ownerAnchor.parentElement ||
+                          ra.closest(".color-bg-subtle") ===
+                            ownerAnchor.closest(".color-bg-subtle")
+                        );
+                      } catch (e) {
+                        return false;
+                      }
+                    });
+                    if (isOwnerNearRepo) {
+                      try {
+                        b.remove();
+                      } catch (e) {}
+                      return;
+                    }
+                  }
+                }
+
+                if (kept.has(name)) {
+                  try {
+                    b.remove();
+                  } catch (e) {}
+                } else {
+                  kept.add(name);
+                  namesSeen.add(name);
+                  try {
+                    b.dataset.ghName = name;
+                  } catch (e) {}
+                }
+              } catch (e) {}
+            });
+          } catch (e) {}
+
+          // determine if this feed item is a FOLLOW card (already detected above)
+
+          // header anchor (top actor) - for follow and ADDED_TO_LIST events, show a badge for the actor
+          let headerAnchor = null;
+          if (isFollowEvent || isAddedToListEvent) {
+            try {
+              headerAnchor = item.querySelector('header a[href^="/"]');
+            } catch (e) {}
+            if (headerAnchor) {
+              const headerName = (headerAnchor.getAttribute("href") || "")
+                .replace(/^\//, "")
+                .replace(/\/$/, "");
+              // skip invalid names / viewer / already-handled usernames
+              if (
+                !headerName ||
+                headerName === viewer ||
+                namesSeen.has(headerName)
+              ) {
+                // nothing to do here
+              } else {
+                // if a badge for this name already exists elsewhere in the article, mark handled and skip
+                try {
+                  if (
+                    item.querySelector(
+                      '.github-utils-list-badge[data-gh-name="' +
+                        headerName +
+                        '"] , .github-utils-follow-badge[data-gh-name="' +
+                        headerName +
+                        '"]',
+                    )
+                  ) {
+                    namesSeen.add(headerName);
+                  } else {
+                    // ensure not already present immediately adjacent
+                    const next = headerAnchor.nextElementSibling;
+                    if (
+                      !(
+                        next &&
+                        next.classList &&
+                        (next.classList.contains("github-utils-list-badge") ||
+                          next.classList.contains("github-utils-follow-badge"))
+                      )
+                    ) {
+                      const placeholder = document.createElement("span");
+                      placeholder.className = "github-utils-list-badge";
+                      placeholder.textContent = "...";
+                      placeholder.dataset.ghName = headerName;
+                      // Prefer placing the badge to the left of the action button/menu if present; otherwise fall back to name-side inline
+                      try {
+                        const header =
+                          headerAnchor.closest("header") ||
+                          headerAnchor.parentElement;
+                        const actionBtn =
+                          header &&
+                          header.querySelector(
+                            ".feed-item-heading-menu-button, button[aria-haspopup], .user-following-container, .github-utils-checker",
+                          );
+                        if (actionBtn) {
+                          try {
+                            placeholder.style.display = "inline-block";
+                            placeholder.style.marginRight = "6px";
+                            placeholder.style.marginTop = "0";
+                            actionBtn.insertAdjacentElement(
+                              "beforebegin",
+                              placeholder,
+                            );
+                          } catch (e) {
+                            try {
+                              actionBtn.parentElement &&
+                                actionBtn.parentElement.insertBefore(
+                                  placeholder,
+                                  actionBtn,
+                                );
+                            } catch (e2) {}
+                          }
+                        } else {
+                          try {
+                            placeholder.style.display = "inline-flex";
+                            placeholder.style.marginLeft = "6px";
+                            placeholder.style.marginTop = "0";
+                            placeholder.style.verticalAlign = "middle";
+                          } catch (e) {}
+                          try {
+                            headerAnchor.insertAdjacentElement(
+                              "afterend",
+                              placeholder,
+                            );
+                          } catch (e) {
+                            try {
+                              headerAnchor.parentElement &&
+                                headerAnchor.parentElement.appendChild(
+                                  placeholder,
+                                );
+                            } catch (e2) {}
+                          }
+                        }
+                      } catch (e) {}
+                      // mark as handled for this article so other occurrences won't get duplicates
+                      namesSeen.add(headerName);
+
+                      // resolve status for header anchor (uses headerName)
+                      (async () => {
+                        try {
+                          const dom = await ensure("src/utils/follow/dom.js");
+                          const client = await ensure(
+                            "src/utils/follow/client.js",
+                          );
+                          if (!dom || !client) {
+                            dom &&
+                              dom.replaceWithBadge(
+                                placeholder,
+                                "unknown",
+                                "github-utils-list-badge name-side",
+                              );
+                            return;
+                          }
+                          const name = headerName;
+                          const useBulk = shouldUseBulkChecks();
+                          let resp = null;
+                          if (useBulk)
+                            resp = await client
+                              .getFollowStatusOnce(viewer, name)
+                              .catch(() => null);
+                          else
+                            resp = await new Promise((resolve) =>
+                              chrome.runtime.sendMessage(
+                                { type: "checkFollow", viewer, target: name },
+                                (r) => {
+                                  if (chrome.runtime.lastError) {
+                                    console.warn(
+                                      "[gh-utils] checkFollow msg failed (feed header)",
+                                      chrome.runtime.lastError,
+                                    );
+                                    resolve(null);
+                                    return;
+                                  }
+                                  resolve(r || null);
+                                },
+                              ),
+                            );
+                          if (!resp)
+                            dom.replaceWithBadge(
+                              placeholder,
+                              "unknown",
+                              "github-utils-list-badge name-side",
+                            );
+                          else
+                            dom.replaceWithBadge(
+                              placeholder,
+                              resp.targetFollowsViewer
+                                ? "followed"
+                                : "not_followed",
+                              "github-utils-list-badge name-side",
+                            );
+                        } catch (e) {
+                          try {
+                            placeholder &&
+                              placeholder.replaceWith &&
+                              placeholder.replaceWith(
+                                document.createElement("span"),
+                              );
+                          } catch (e2) {}
+                        }
+                      })();
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
+          }
+
+          // For other anchors in the item, prefer per-row follow buttons
+          allAnchors.forEach((a) => {
+            try {
+              if (isFollowEvent && headerAnchor && a === headerAnchor) return; // skip header anchor already handled
+              // For ADDED_TO_LIST events, only show badge for the actor (header anchor); skip other anchors
+              if (isAddedToListEvent && headerAnchor && a !== headerAnchor)
+                return;
+              const href = a.getAttribute("href") || "";
+              const name = href.replace(/^\//, "").replace(/\/$/, "");
+              if (!name || name.indexOf("/") !== -1) return;
+              if (name === viewer) return;
+              // In repo-showing cards (STARRED/TRENDING/RECOMMENDATION/ADDED_TO_LIST), skip anchors that are part of the repo owner/repo area (we don't badge those users)
+              if (
+                (isStarredEvent ||
+                  isTrendingEvent ||
+                  isRecommendationEvent ||
+                  isAddedToListEvent) &&
+                repoAnchors.length
+              ) {
+                try {
+                  const ownerAnchor = a;
+                  const ownerNearRepo = repoAnchors.some((ra) => {
+                    try {
+                      return (
+                        ra.closest("section") ===
+                          ownerAnchor.closest("section") ||
+                        ra.closest("div") === ownerAnchor.closest("div") ||
+                        ra.parentElement === ownerAnchor.parentElement ||
+                        ra.closest(".color-bg-subtle") ===
+                          ownerAnchor.closest(".color-bg-subtle")
+                      );
+                    } catch (e) {
+                      return false;
+                    }
+                  });
+                  if (ownerNearRepo) return;
+                } catch (e) {}
+              }
+              if (namesSeen.has(name)) return;
+
+              // find the nearest row/container for this user
+              const userRow =
+                a.closest("section") ||
+                a.closest(".d-flex") ||
+                a.closest(".feed-item-content") ||
+                a.closest(".js-feed-item-view") ||
+                item;
+              if (!userRow) return;
+
+              // skip if this userRow already has a badge
+              if (
+                userRow.querySelector &&
+                userRow.querySelector(
+                  ".github-utils-list-badge, .github-utils-follow-badge",
+                )
+              )
+                return;
+
+              // find follow button in the same row
+              const followBtn = Array.from(
+                (userRow.querySelectorAll &&
+                  userRow.querySelectorAll('input[type="submit"],button')) ||
+                  [],
+              ).find((b) => {
+                try {
+                  const s = (
+                    b.getAttribute("aria-label") ||
+                    b.title ||
+                    b.textContent ||
+                    b.innerText ||
+                    ""
+                  ).toLowerCase();
+                  return /(^|\s)(follow|unfollow)($|\s)/i.test(s);
+                } catch (e) {
+                  return false;
+                }
+              });
+
+              // avoid duplicating adjacent badges
+              if (followBtn) {
+                const after = followBtn.nextElementSibling;
+                if (
+                  after &&
+                  after.classList &&
+                  (after.classList.contains("github-utils-list-badge") ||
+                    after.classList.contains("github-utils-follow-badge"))
+                )
+                  return;
+              } else {
+                const next = a.nextElementSibling;
+                if (
+                  next &&
+                  next.classList &&
+                  (next.classList.contains("github-utils-list-badge") ||
+                    next.classList.contains("github-utils-follow-badge"))
+                )
+                  return;
+              }
+
+              const placeholder = document.createElement("span");
+              placeholder.className = "github-utils-list-badge";
+              placeholder.textContent = "...";
+
+              try {
+                if (followBtn) {
+                  try {
+                    // insert immediately for visual responsiveness, then migrate into checker container when possible
+                    placeholder.style.display = "block";
+                    placeholder.style.marginTop = "6px";
+                    placeholder.style.marginLeft = "0";
+                    placeholder.style.fontSize = "12px";
+                  } catch (e) {}
+                  try {
+                    followBtn.insertAdjacentElement("afterend", placeholder);
+                  } catch (e) {
+                    try {
+                      followBtn.parentElement &&
+                        followBtn.parentElement.insertBefore(
+                          placeholder,
+                          followBtn.nextSibling,
+                        );
+                    } catch (e2) {}
+                  }
+
+                  // attempt to move placeholder into the persistent checker container (separate from the form)
+                  try {
+                    ensure("src/utils/follow/dom.js")
+                      .then((dom) => {
+                        try {
+                          const moved = dom.insertPlaceholderInChecker(
+                            followBtn,
+                            "github-utils-list-badge",
+                          );
+                          if (moved && moved !== placeholder) {
+                            try {
+                              moved.dataset.ghFb = "1";
+                              moved.dataset.ghName = name;
+                              placeholder.replaceWith(moved);
+                            } catch (e) {
+                              try {
+                                placeholder.remove();
+                              } catch (e2) {}
+                            }
+                          } else if (moved) {
+                            moved.dataset.ghName = name;
+                          }
+                        } catch (e) {}
+                      })
+                      .catch(() => {});
+                  } catch (e) {}
+                } else {
+                  // Prefer placing the badge to the left of the action button/menu in the user's row when possible
+                  let placed = false;
+                  try {
+                    const actionBtn = userRow.querySelector(
+                      ".user-following-container, .feed-item-heading-menu-button, button[aria-haspopup], .github-utils-checker",
+                    );
+                    if (actionBtn) {
+                      try {
+                        placeholder.style.display = "inline-block";
+                        placeholder.style.marginRight = "6px";
+                        placeholder.style.marginTop = "0";
+                        actionBtn.insertAdjacentElement(
+                          "beforebegin",
+                          placeholder,
+                        );
+                        placed = true;
+                      } catch (e) {
+                        try {
+                          actionBtn.parentElement &&
+                            actionBtn.parentElement.insertBefore(
+                              placeholder,
+                              actionBtn,
+                            );
+                          placed = true;
+                        } catch (e2) {}
+                      }
+                    }
+                  } catch (e) {}
+                  if (!placed) {
+                    try {
+                      placeholder.style.display = "inline-flex";
+                      placeholder.style.marginLeft = "6px";
+                      placeholder.style.marginTop = "0";
+                      placeholder.style.verticalAlign = "middle";
+                    } catch (e) {}
+                    a.insertAdjacentElement("afterend", placeholder);
+                  }
+                }
+              } catch (e) {
+                try {
+                  ((followBtn && followBtn.parentElement) || a.parentElement) &&
+                    (
+                      (followBtn && followBtn.parentElement) ||
+                      a.parentElement
+                    ).appendChild(placeholder);
+                } catch (e2) {}
+              }
+
+              placeholder.dataset.ghFb = "1";
+              placeholder.dataset.ghName = name;
+              namesSeen.add(name);
+
+              (async () => {
+                try {
+                  const dom = await ensure("src/utils/follow/dom.js");
+                  const client = await ensure("src/utils/follow/client.js");
+                  if (!dom || !client) {
+                    dom &&
+                      dom.replaceWithBadge(
+                        placeholder,
+                        "unknown",
+                        "github-utils-list-badge",
+                      );
+                    return;
+                  }
+                  const useBulk = shouldUseBulkChecks();
+                  let resp = null;
+                  if (useBulk)
+                    resp = await client
+                      .getFollowStatusOnce(viewer, name)
+                      .catch(() => null);
+                  else
+                    resp = await new Promise((resolve) =>
+                      chrome.runtime.sendMessage(
+                        { type: "checkFollow", viewer, target: name },
+                        (r) => {
+                          if (chrome.runtime.lastError) {
+                            console.warn(
+                              "[gh-utils] checkFollow msg failed (feed)",
+                              chrome.runtime.lastError,
+                            );
+                            resolve(null);
+                            return;
+                          }
+                          resolve(r || null);
+                        },
+                      ),
+                    );
+                  if (!resp)
+                    dom.replaceWithBadge(
+                      placeholder,
+                      "unknown",
+                      followBtn
+                        ? "github-utils-list-badge"
+                        : "github-utils-list-badge name-side",
+                    );
+                  else
+                    dom.replaceWithBadge(
+                      placeholder,
+                      resp.targetFollowsViewer ? "followed" : "not_followed",
+                      followBtn
+                        ? "github-utils-list-badge"
+                        : "github-utils-list-badge name-side",
+                    );
+                } catch (e) {
+                  try {
+                    placeholder &&
+                      placeholder.replaceWith &&
+                      placeholder.replaceWith(document.createElement("span"));
+                  } catch (e2) {}
+                }
+              })();
+            } catch (e) {}
+          });
+        } catch (e) {}
+      });
+    } catch (e) {}
   }
 
   function scanHover(root) {
@@ -297,6 +1058,7 @@
       attempt++;
       try {
         scan(document);
+        scanFeed(document);
         const pop = document.querySelectorAll(
           "[data-hovercard-url], .Popover-message",
         );
@@ -313,6 +1075,100 @@
     };
     retryTimer = setTimeout(tryRun, 80);
   }
+
+  // Ensure badges inside follow forms are moved to checker container when a follow/unfollow action occurs
+  (function attachFollowProtectionHandlers() {
+    function isFollowButton(el) {
+      try {
+        const s = (
+          el.getAttribute("aria-label") ||
+          el.title ||
+          el.textContent ||
+          el.innerText ||
+          ""
+        )
+          .toString()
+          .toLowerCase();
+        return /(^|\s)(follow|unfollow)($|\s)/i.test(s);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function moveBadgesForButton(btn) {
+      try {
+        ensure("src/utils/follow/dom.js")
+          .then((dom) => {
+            try {
+              // Move badges inside the same form/container
+              const form =
+                btn.closest("form") || btn.closest(".user-following-container");
+              if (form) {
+                const badges = Array.from(
+                  (form.querySelectorAll &&
+                    form.querySelectorAll(
+                      ".github-utils-list-badge, .github-utils-follow-badge",
+                    )) ||
+                    [],
+                );
+                badges.forEach((b) => {
+                  try {
+                    dom.appendBadgeToChecker(btn, b);
+                  } catch (e) {}
+                });
+              }
+              // Also move any immediate adjacent badge
+              const after = btn.nextElementSibling;
+              if (
+                after &&
+                after.classList &&
+                (after.classList.contains("github-utils-list-badge") ||
+                  after.classList.contains("github-utils-follow-badge"))
+              ) {
+                try {
+                  dom.appendBadgeToChecker(btn, after);
+                } catch (e) {}
+              }
+            } catch (e) {}
+          })
+          .catch(() => {});
+      } catch (e) {}
+    }
+
+    document.addEventListener(
+      "click",
+      (ev) => {
+        try {
+          const btn =
+            ev.target &&
+            ev.target.closest &&
+            ev.target.closest('input[type="submit"],button');
+          if (!btn) return;
+          if (!isFollowButton(btn)) return;
+          // move badges immediately (before DOM mutations) and again shortly after
+          moveBadgesForButton(btn);
+          setTimeout(() => moveBadgesForButton(btn), 120);
+        } catch (e) {}
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "submit",
+      (ev) => {
+        try {
+          const btn =
+            ev.target &&
+            ev.target.querySelector &&
+            (ev.target.querySelector('input[type="submit"],button') || null);
+          if (!btn) return;
+          if (!isFollowButton(btn)) return;
+          moveBadgesForButton(btn);
+        } catch (e) {}
+      },
+      true,
+    );
+  })();
 
   let __gh_last_inject_at = 0;
   const mo = new MutationObserver((mutations) => {
@@ -340,6 +1196,25 @@
         if (n.matches && n.matches(".h-card, .vcard, #js-pjax-container")) {
           schedule();
         }
+
+        // If the added node contains feed items (e.g., after "Load more"), scan them immediately.
+        try {
+          if (
+            (n.matches &&
+              n.matches(
+                "article, .js-feed-item-component, .news, .TimelineItem, .js-timeline-item, .news-item",
+              )) ||
+            (n.querySelector &&
+              n.querySelector(
+                "article, .js-feed-item-component, .news, .TimelineItem, .js-timeline-item, .news-item",
+              ))
+          ) {
+            try {
+              scanFeed(n);
+            } catch (e) {}
+          }
+        } catch (e) {}
+
         if (
           n.querySelector &&
           n.querySelector("[data-hovercard-url], .Popover-message")
@@ -837,12 +1712,12 @@
       if (!viewer) return false;
       const name = dom.extractUsernameFromButton(btn);
       if (!name) return false;
-      const item =
+      const row =
         btn.closest(".d-table") || btn.closest("li") || btn.closest("div");
       if (
-        item &&
-        item.querySelector &&
-        item.querySelector(
+        row &&
+        row.querySelector &&
+        row.querySelector(
           ".github-utils-list-badge, .github-utils-follow-badge",
         )
       )
@@ -934,4 +1809,8 @@
   document
     .querySelectorAll("[data-hovercard-url], .Popover-message")
     .forEach((p) => scanHover(p));
+  try {
+    // initial feed scan
+    scanFeed(document);
+  } catch (e) {}
 })();
