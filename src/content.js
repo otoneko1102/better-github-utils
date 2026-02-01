@@ -217,6 +217,9 @@
             hv && hv.indexOf('"card_type":"REPOSITORY_RECOMMENDATION"') !== -1;
           const isAddedToListEvent =
             hv && hv.indexOf('"card_type":"ADDED_TO_LIST"') !== -1;
+          // Sponsor-related cards (e.g. NEAR_SPONSORS_GOAL) should not show badges
+          const isSponsorEvent = hv && hv.indexOf('SPONSOR') !== -1;
+          if (isSponsorEvent) return;
 
           // collect all anchors and identify repo links (owner/repo)
           const allAnchors = Array.from(
