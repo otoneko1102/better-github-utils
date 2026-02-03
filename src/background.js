@@ -40,24 +40,27 @@ function schedulePersistSave() {
 function loadPersistentCache() {
   return new Promise((resolve) => {
     try {
-      chrome.storage.local.get([PERSIST_KEY_LISTS, PERSIST_KEY_CHECK], (items) => {
-        const now = Date.now();
-        const lists = items?.[PERSIST_KEY_LISTS] || {};
-        const checks = items?.[PERSIST_KEY_CHECK] || {};
-        Object.keys(lists).forEach((k) => {
-          const e = lists[k];
-          if (e && e.ts && now - e.ts < CACHE_TTL) _listsCache.set(k, e);
-        });
-        Object.keys(checks).forEach((k) => {
-          const e = checks[k];
-          if (e && e.ts && now - e.ts < CACHE_TTL) _checkCache.set(k, e);
-        });
-        console.debug("[gh-utils] bg loadPersistentCache loaded", {
-          lists: _listsCache.size,
-          checks: _checkCache.size,
-        });
-        resolve();
-      });
+      chrome.storage.local.get(
+        [PERSIST_KEY_LISTS, PERSIST_KEY_CHECK],
+        (items) => {
+          const now = Date.now();
+          const lists = items?.[PERSIST_KEY_LISTS] || {};
+          const checks = items?.[PERSIST_KEY_CHECK] || {};
+          Object.keys(lists).forEach((k) => {
+            const e = lists[k];
+            if (e && e.ts && now - e.ts < CACHE_TTL) _listsCache.set(k, e);
+          });
+          Object.keys(checks).forEach((k) => {
+            const e = checks[k];
+            if (e && e.ts && now - e.ts < CACHE_TTL) _checkCache.set(k, e);
+          });
+          console.debug("[gh-utils] bg loadPersistentCache loaded", {
+            lists: _listsCache.size,
+            checks: _checkCache.size,
+          });
+          resolve();
+        },
+      );
     } catch (e) {
       console.warn("[gh-utils] bg loadPersistentCache error", e);
       resolve();
@@ -187,7 +190,11 @@ async function checkFollowing(viewer, target) {
   if (_checkCache.has(cacheKey)) {
     const cached = _checkCache.get(cacheKey);
     if (cached && now - cached.ts < CACHE_TTL) {
-      console.debug("[gh-utils] bg checkFollowing cache hit", { viewer, target, age: now - cached.ts });
+      console.debug("[gh-utils] bg checkFollowing cache hit", {
+        viewer,
+        target,
+        age: now - cached.ts,
+      });
       return cached.data;
     }
     _checkCache.delete(cacheKey);
@@ -251,7 +258,10 @@ async function getListsForUser(username) {
   if (_listsCache.has(key)) {
     const cached = _listsCache.get(key);
     if (cached && now - cached.ts < CACHE_TTL) {
-      console.debug("[gh-utils] bg getListsForUser cache hit", { username: key, age: now - cached.ts });
+      console.debug("[gh-utils] bg getListsForUser cache hit", {
+        username: key,
+        age: now - cached.ts,
+      });
       return cached.data;
     }
     _listsCache.delete(key);

@@ -53,21 +53,62 @@
       } catch (e) {}
     });
   } catch (e) {}
+  // Reserved paths that are not user accounts
+  const IGNORED_PATHS = [
+    // Navigation & features
+    "notifications",
+    "settings",
+    "explore",
+    "marketplace",
+    "features",
+    "pricing",
+    "pulls",
+    "issues",
+    "codespaces",
+    "copilot",
+    // Account & auth
+    "account",
+    "login",
+    "logout",
+    "signup",
+    "join",
+    "sessions",
+    "password_reset",
+    // Sponsorship & billing
+    "sponsors",
+    "sponsorships",
+    "billing",
+    // Resources & docs
+    "about",
+    "security",
+    "enterprise",
+    "team",
+    "customer-stories",
+    "readme",
+    "resources",
+    "events",
+    "collections",
+    "topics",
+    "trending",
+    "search",
+    // Orgs & special pages
+    "orgs",
+    "organizations",
+    "new",
+    "apps",
+    "integrations",
+    "site",
+    "contact",
+    "support",
+    "status",
+    "education",
+  ];
+
   function getProfileFromPath() {
     const m = location.pathname.match(/^\/([^\/]+)(?:\/.*)?$/);
     if (!m) return null;
     const u = m[1];
-    const reserved = [
-      "notifications",
-      "settings",
-      "explore",
-      "marketplace",
-      "features",
-      "pricing",
-      "pulls",
-      "issues",
-    ];
-    return reserved.includes(u) ? null : u;
+    return IGNORED_PATHS.includes(u.toLowerCase()) ? null : u;
   }
   function isOwnFollowers() {
     try {
@@ -218,7 +259,7 @@
           const isAddedToListEvent =
             hv && hv.indexOf('"card_type":"ADDED_TO_LIST"') !== -1;
           // Sponsor-related cards (e.g. NEAR_SPONSORS_GOAL) should not show badges
-          const isSponsorEvent = hv && hv.indexOf('SPONSOR') !== -1;
+          const isSponsorEvent = hv && hv.indexOf("SPONSOR") !== -1;
           if (isSponsorEvent) return;
 
           // collect all anchors and identify repo links (owner/repo)
