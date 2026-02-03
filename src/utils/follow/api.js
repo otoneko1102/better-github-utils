@@ -7,7 +7,7 @@ async function getToken() {
 }
 
 const _listCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 10 * 60 * 1000;
 
 function parseLinkHeader(header) {
   if (!header) return {};

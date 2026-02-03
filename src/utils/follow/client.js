@@ -3,7 +3,7 @@ const cache = new Map();
 const pendingLists = new Map();
 const listsCache = new Map();
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const PERSIST_KEY_CACHE = "gh_follow_cache_v1";
 const PERSIST_KEY_LISTS = "gh_lists_cache_v1";
 let _persistTimer = null;

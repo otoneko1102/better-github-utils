@@ -6,6 +6,68 @@ async function getToken() {
   );
 }
 
+// Cache configuration
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const PERSIST_KEY_LISTS = "gh_bg_lists_cache_v1";
+const PERSIST_KEY_CHECK = "gh_bg_check_cache_v1";
+const _listsCache = new Map();
+const _checkCache = new Map();
+let _persistTimer = null;
+
+function schedulePersistSave() {
+  if (_persistTimer) return;
+  _persistTimer = setTimeout(() => {
+    _persistTimer = null;
+    try {
+      const lists = {};
+      _listsCache.forEach((v, k) => {
+        if (v && v.ts && v.data) lists[k] = v;
+      });
+      const checks = {};
+      _checkCache.forEach((v, k) => {
+        if (v && v.ts && v.data) checks[k] = v;
+      });
+      chrome.storage.local.set({
+        [PERSIST_KEY_LISTS]: lists,
+        [PERSIST_KEY_CHECK]: checks,
+      });
+    } catch (e) {
+      console.warn("[gh-utils] bg schedulePersistSave error", e);
+    }
+  }, 500);
+}
+
+function loadPersistentCache() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get([PERSIST_KEY_LISTS, PERSIST_KEY_CHECK], (items) => {
+        const now = Date.now();
+        const lists = items?.[PERSIST_KEY_LISTS] || {};
+        const checks = items?.[PERSIST_KEY_CHECK] || {};
+        Object.keys(lists).forEach((k) => {
+          const e = lists[k];
+          if (e && e.ts && now - e.ts < CACHE_TTL) _listsCache.set(k, e);
+        });
+        Object.keys(checks).forEach((k) => {
+          const e = checks[k];
+          if (e && e.ts && now - e.ts < CACHE_TTL) _checkCache.set(k, e);
+        });
+        console.debug("[gh-utils] bg loadPersistentCache loaded", {
+          lists: _listsCache.size,
+          checks: _checkCache.size,
+        });
+        resolve();
+      });
+    } catch (e) {
+      console.warn("[gh-utils] bg loadPersistentCache error", e);
+      resolve();
+    }
+  });
+}
+
+// Load persisted cache on startup
+loadPersistentCache().catch(() => {});
+
 function parseLinkHeader(header) {
   if (!header) return {};
   const parts = header.split(",");
@@ -118,6 +180,19 @@ async function getFollowersList(username, token) {
 }
 
 async function checkFollowing(viewer, target) {
+  const cacheKey = `${viewer.toLowerCase()}::${target.toLowerCase()}`;
+  const now = Date.now();
+
+  // Check cache first
+  if (_checkCache.has(cacheKey)) {
+    const cached = _checkCache.get(cacheKey);
+    if (cached && now - cached.ts < CACHE_TTL) {
+      console.debug("[gh-utils] bg checkFollowing cache hit", { viewer, target, age: now - cached.ts });
+      return cached.data;
+    }
+    _checkCache.delete(cacheKey);
+  }
+
   const token = await getToken();
   const headers = { Accept: "application/vnd.github.v3+json" };
   if (token) headers["Authorization"] = `token ${token}`;
@@ -161,13 +236,30 @@ async function checkFollowing(viewer, target) {
       e,
     );
   }
-  return { viewerFollowsTarget, targetFollowsViewer };
+
+  const result = { viewerFollowsTarget, targetFollowsViewer };
+  _checkCache.set(cacheKey, { data: result, ts: Date.now() });
+  schedulePersistSave();
+  return result;
 }
 
 async function getListsForUser(username) {
   const key = (username || "").toLowerCase();
+  const now = Date.now();
+
+  // Check cache first
+  if (_listsCache.has(key)) {
+    const cached = _listsCache.get(key);
+    if (cached && now - cached.ts < CACHE_TTL) {
+      console.debug("[gh-utils] bg getListsForUser cache hit", { username: key, age: now - cached.ts });
+      return cached.data;
+    }
+    _listsCache.delete(key);
+  }
+
   const token = await getToken();
   try {
+    let result;
     if (token) {
       const authLogin = await getAuthenticatedUser(token);
       if (authLogin && authLogin.toLowerCase() === key) {
@@ -175,15 +267,21 @@ async function getListsForUser(username) {
           getAuthFollowers(token),
           getAuthFollowing(token),
         ]);
-        return {
+        result = {
           followers: Array.from(followers),
           following: Array.from(following),
           fetchedAt: Date.now(),
         };
+        _listsCache.set(key, { data: result, ts: Date.now() });
+        schedulePersistSave();
+        return result;
       }
     }
     const followers = await getFollowersList(username, token);
-    return { followers: Array.from(followers), fetchedAt: Date.now() };
+    result = { followers: Array.from(followers), fetchedAt: Date.now() };
+    _listsCache.set(key, { data: result, ts: Date.now() });
+    schedulePersistSave();
+    return result;
   } catch (e) {
     console.warn("[gh-utils] bg getListsForUser failed", e, { username });
     return { followers: [], fetchedAt: Date.now(), error: true };
