@@ -122,6 +122,36 @@
     }
   }
 
+  /**
+   * Determine whether follow logic should be active on the current page.
+   * Allowed pages:
+   *   - github.com (Feed / Home)
+   *   - github.com/[username] (profile)
+   *   - github.com/[username]?tab=following
+   *   - github.com/[username]?tab=followers
+   * Disallowed:
+   *   - github.com/[user]/[repo] or deeper paths
+   */
+  function shouldRunFollowLogic() {
+    try {
+      const path = location.pathname;
+      // Home / Feed page
+      if (path === "/" || path === "") return true;
+      // Match /username or /username/ (no further segments)
+      const match = path.match(/^\/([^\/]+)\/?$/);
+      if (match) {
+        const segment = match[1];
+        // Exclude reserved paths (already defined in IGNORED_PATHS)
+        if (IGNORED_PATHS.includes(segment.toLowerCase())) return false;
+        return true;
+      }
+      // Any deeper path like /user/repo is not allowed
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function shouldUseBulkChecks() {
     const profile = getProfileFromPath();
     const viewer = getCurrentUser();
@@ -1096,6 +1126,8 @@
   let retryTimer = null;
   function schedule() {
     if (retryTimer) clearTimeout(retryTimer);
+    // Skip follow logic on disallowed pages (e.g., repo pages)
+    if (!shouldRunFollowLogic()) return;
     let attempt = 0;
     const max = 6;
     const tryRun = () => {
@@ -1850,11 +1882,13 @@
   } catch (e) {}
 
   schedule();
-  document
-    .querySelectorAll("[data-hovercard-url], .Popover-message")
-    .forEach((p) => scanHover(p));
-  try {
-    // initial feed scan
-    scanFeed(document);
-  } catch (e) {}
+  if (shouldRunFollowLogic()) {
+    document
+      .querySelectorAll("[data-hovercard-url], .Popover-message")
+      .forEach((p) => scanHover(p));
+    try {
+      // initial feed scan
+      scanFeed(document);
+    } catch (e) {}
+  }
 })();
